@@ -6,7 +6,7 @@ FROM ubuntu:14.04
 RUN apt-get update
 RUN apt-get -y install git bzr make cmake 
 RUN apt-get -y install build-essential
-RUN apt-get -y install libglew-dev wxgtk3.0-dev x3.0-headers libglm-dev libcurl4-openssl-dev python2.7 pkg-config libboost1.54-all-dev swig libcairo2-dev doxygen
+RUN apt-get -y install libglew-dev wxgtk3.0-dev x3.0-headers libglm-dev libcurl4-openssl-dev python2.7 pkg-config libboost1.54-all-dev swig libcairo2-dev doxygen openssl
 
 WORKDIR /mnt/kicad-test
 
