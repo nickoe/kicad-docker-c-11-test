@@ -1,15 +1,7 @@
-# This is to test building kicad on oldest supported Ubuntu version
-# currently. Goal is to see if it works with system boost and C++11.
-
 FROM ubuntu:14.04
+MAINTAINER Nick Østergaard <oe.nick at gmail dot com>
 
-WORKDIR /mnt/kicad-test
-
-COPY ./0001-Enable-C-11.patch .
-
-RUN pwd
-RUN ls
-
+# Install the kicad dependencies
 RUN apt-get update
 RUN apt-get -y install git bzr make cmake 
 RUN apt-get -y install build-essential
@@ -20,13 +12,38 @@ RUN apt-get update
 RUN apt-get -y upgrade
 RUN apt-get -y install python-wxgtk3.0
 
-RUN echo foo
-RUN git clone https://github.com/KiCad/kicad-source-mirror --depth=500
-RUN cd kicad-source-mirror && git checkout da9ca2def28317e15a129b5a3fb060a6264f5b5e
-RUN cd kicad-source-mirror && patch -p1 -i ../0001-Enable-C-11.patch
+# Install JDK 7 for jenkins
+RUN apt-get install -y openjdk-7-jdk
 
+# Install a basic SSH server
+RUN apt-get install -y openssh-server
+RUN sed -i 's|session    required     pam_loginuid.so|session    optional     pam_loginuid.so|g' /etc/pam.d/sshd
+RUN mkdir -p /var/run/sshd
 
+# Prepare a jenkins user and use it
+#RUN useradd -ms /bin/bash jenkins
+
+# Set user jenkins to the image
+RUN useradd -m -d /home/jenkins -s /bin/sh jenkins &&\
+    echo "jenkins:jenkins" | chpasswd
+#USER jenkins
+WORKDIR /home/jenkins
+
+# Add a patch file
+COPY ./0001-Enable-C-11.patch .
+
+# Prepare workspace
+#RUN echo foo
+#RUN git clone https://github.com/KiCad/kicad-source-mirror --depth=500
+#RUN cd kicad-source-mirror && git checkout da9ca2def28317e15a129b5a3fb060a6264f5b5e
+#RUN cd kicad-source-mirror && patch -p1 -i ../0001-Enable-C-11.patch
+
+# Do stuff
 #CMD mkdir -p build && cd build && cmake .. && make
-RUN mkdir -p kicad-source-mirror/build
-RUN cd kicad-source-mirror/build && cmake -DKICAD_SCRIPTING=ON -DKICAD_SCRIPTING_MODULES=ON -DKICAD_SCRIPTING_WXPYTHON=ON .. && VERBOSE=1 make
+#RUN mkdir -p kicad-source-mirror/build
+#RUN cd kicad-source-mirror/build && cmake -DKICAD_SCRIPTING=ON -DKICAD_SCRIPTING_MODULES=ON -DKICAD_SCRIPTING_WXPYTHON=ON .. && VERBOSE=1 make
+
+# Standard SSH port
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D"] 
 
