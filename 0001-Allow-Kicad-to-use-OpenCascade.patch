@@ -1,0 +1,408 @@
+From 11cd74c38f98682b7b5e7908f1d39fd20b301968 Mon Sep 17 00:00:00 2001
+From: Seth Hillbrand <hillbrand@ucdavis.edu>
+Date: Thu, 25 Jan 2018 16:38:29 -0800
+Subject: [PATCH] Allow Kicad to use OpenCascade
+
+Adds the option of using OpenCascade not just the community edition.
+---
+ CMakeLists.txt                       |  29 +++++-
+ CMakeModules/FindOpenCASCADE.cmake   | 197 +++++++++++++++++++++++++++++++++++
+ common/dialog_about/dialog_about.cpp |  18 ++++
+ plugins/3d/oce/CMakeLists.txt        |   4 +-
+ plugins/3d/oce/loadmodel.cpp         |   2 -
+ utils/kicad2step/CMakeLists.txt      |   4 +-
+ utils/kicad2step/pcb/oce_utils.cpp   |   4 +
+ 7 files changed, 247 insertions(+), 11 deletions(-)
+ create mode 100644 CMakeModules/FindOpenCASCADE.cmake
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 967927fb5..65085aff3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -70,9 +70,13 @@ option( KICAD_SCRIPTING_ACTION_MENU
+     )
+ 
+ option( KICAD_USE_OCE
+-    "Build tools and plugins related to OpenCascade Community Edition (default OFF)"
++    "Build tools and plugins related to OpenCascade Community Edition (default ON)"
+     ON )
+ 
++option( KICAD_USE_OCC
++    "Build tools and plugins related to OpenCascade Technology (overrides KICAD_USE_OCE, default OFF)"
++    OFF )
++
+ option( KICAD_INSTALL_DEMOS
+     "Install kicad demos and examples (default ON)"
+     ON )
+@@ -321,6 +325,11 @@ if( KICAD_USE_OCE )
+     add_definitions( -DKICAD_USE_OCE )
+ endif()
+ 
++if( KICAD_USE_OCC )
++    add_definitions( -DKICAD_USE_OCC )
++    remove_definitions( -DKICAD_USE_OCE )
++endif()
++
+ if( KICAD_USE_CUSTOM_PADS )
+     add_definitions( -DKICAD_USE_CUSTOM_PADS )
+ endif()
+@@ -558,10 +567,20 @@ if( KICAD_SPICE )
+ endif()
+ 
+ # Find OpenCascade Community Edition, required for STEP plugin and tools
+-if( KICAD_USE_OCE )
+-    set( LIBS_OCE TKBinXCAF TKPCAF TKSTEP TKXDESTEP TKIGES TKXDEIGES )
+-
+-    find_package( OCE 0.16 REQUIRED ${LIBS_OCE} )
++if( KICAD_USE_OCE OR KICAD_USE_OCC )
++    find_package(OpenCASCADE)
++    if( NOT OCC_FOUND )
++        MESSAGE( FATAL_ERROR "================================================================\n"
++                             "Neither OpenCASCADE Community Edition nor OpenCASCADE was found!\n"
++                             "================================================================\n")
++    endif()
++    if( OCC_VERSION_STRING VERSION_LESS 6.8.0 )
++        MESSAGE( FATAL_ERROR "================================================================\n"
++                             "OpenCASCADE version ${OCC_VERSION_STRING} was found.\n"
++                             "  KiCad requires a minimum version of 6.8.0\n"
++                             "================================================================\n")
++    endif()
++    include_directories( SYSTEM ${OCC_INCLUDE_DIR} )
+ endif()
+ 
+ # Assist with header file searching optimization:
+diff --git a/CMakeModules/FindOpenCASCADE.cmake b/CMakeModules/FindOpenCASCADE.cmake
+new file mode 100644
+index 000000000..c0416d336
+--- /dev/null
++++ b/CMakeModules/FindOpenCASCADE.cmake
+@@ -0,0 +1,197 @@
++# Try to find OCE / OCC
++# Once done this will define
++#
++# OCC_FOUND          - system has OCC - OpenCASCADE
++# OCC_INCLUDE_DIR    - where the OCC include directory can be found
++# OCC_LIBRARY_DIR    - where the OCC library directory can be found
++# OCC_LIBRARIES      - Link this to use OCC
++
++############################################################################
++#
++# Modifications Copyright (C) 2018 Seth Hillbrand
++#
++# Based on FindOpenCasCade.cmake by the FreeCAD CAx development team
++#
++# This library is free software; you can redistribute it and/or
++# modify it under the terms of the GNU Lesser General Public
++# License as published by the Free Software Foundation; either
++# version 2.1 of the License, or (at your option) any later version.
++#
++# This library is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++# Lesser General Public License for more details.
++#
++# You should have received a copy of the GNU Lesser General Public
++# License along with this library; if not, write to the Free Software
++# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
++
++# Set the needed libraries
++set( OCC_LIBS
++    TKMesh
++    TKernel
++    TKG2d
++    TKG3d
++    TKMath
++    TKIGES
++    TKSTL
++    TKXSBase
++    TKBin
++    TKBO
++    TKCDF
++    TKBRep
++    TKTopAlgo
++    TKGeomAlgo
++    TKGeomBase
++    TKPrim
++    TKSTEP
++    TKSTEPBase
++    TKSTEPAttr
++    TKFeat
++    TKCAF
++    TKXCAF
++    TKLCAF
++    TKXDESTEP
++    TKXDEIGES
++)
++
++# First try to find OpenCASCADE Community Edition
++if(NOT DEFINED OCE_INCLUDE_DIR)
++  # Check for OSX needs to come first because UNIX evaluates to true on OSX
++  if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
++    if(DEFINED HOMEBREW_PREFIX)
++      find_package(OCE QUIET HINTS ${HOMEBREW_PREFIX}/Cellar/oce/*)
++    elseif(DEFINED MACPORTS_PREFIX)
++      find_package(OCE QUIET HINTS ${MACPORTS_PREFIX}/Library/Frameworks)
++    endif()
++  else()
++    find_package(OCE QUIET)
++  endif()
++endif()
++
++if(OCE_FOUND AND NOT KICAD_USE_OCC)
++  set(OCC_TYPE "OpenCASCADE Community Edition")
++  set(OCC_INCLUDE_DIR ${OCE_INCLUDE_DIRS})
++  FIND_LIBRARY(OCC_LIBRARY TKernel
++    HINTS
++    ${OCC_LIBRARY_DIR}
++    /usr
++    /usr/local
++    PATH_SUFFIXES lib 
++  )
++else(OCE_FOUND AND NOT KICAD_USE_OCC) #look for OpenCASCADE
++  set(OCC_TYPE "OpenCASCADE Standard Edition")
++  if(WIN32)
++    if(CYGWIN OR MINGW)
++      FIND_PATH(OCC_INCLUDE_DIR Standard_Version.hxx
++        /usr/include/opencascade
++        /usr/local/include/opencascade
++        /opt/opencascade/include
++        /opt/opencascade/inc
++      )
++      FIND_LIBRARY(OCC_LIBRARY TKernel
++        HINTS
++        ${OCC_LIBRARY_DIR}
++        /usr/lib
++        /usr/local/lib
++        /opt/opencascade/lib
++      )
++    else(CYGWIN OR MINGW)
++      FIND_PATH(OCC_INCLUDE_DIR Standard_Version.hxx
++        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\SIM\\OCC\\2;Installation Path]/include"
++      )
++      FIND_LIBRARY(OCC_LIBRARY TKernel
++        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\SIM\\OCC\\2;Installation Path]/lib"
++      )
++    endif(CYGWIN OR MINGW)
++  else(WIN32)
++    FIND_PATH(OCC_INCLUDE_DIR Standard_Version.hxx
++      /usr/include/opencascade
++      /usr/local/include/opencascade
++      /opt/opencascade/include
++      /opt/opencascade/inc
++    )
++    FIND_LIBRARY(OCC_LIBRARY TKernel
++      HINTS
++      ${OCC_LIBRARY_DIR}
++      /usr
++      /usr/local
++      /opt/opencascade
++      /opt/opencascade/lin64/gcc
++      PATH_SUFFIXES lib 
++    )
++  endif(WIN32)
++endif(OCE_FOUND AND NOT KICAD_USE_OCC)
++
++if(OCC_LIBRARY)
++  GET_FILENAME_COMPONENT(OCC_LIBRARY_DIR ${OCC_LIBRARY} PATH)
++  IF(NOT OCC_INCLUDE_DIR)
++    FIND_PATH(OCC_INCLUDE_DIR Standard_Version.hxx
++      ${OCC_LIBRARY_DIR}/../inc
++    )
++  ENDIF()
++else(OCC_LIBRARY)
++  message( "" )
++  message( "*** OpenCascade library missing ***" )
++  message( "Verify your OpenCascade installation or pass CMake" )
++  message( "  the library directory as '-DOCC_LIBRARY_DIR=<path>'" )
++  message( "" )
++  message( FATAL_ERROR "" )
++endif(OCC_LIBRARY)
++
++if(OCC_INCLUDE_DIR AND NOT ${OCC_INCLUDE_DIR} STREQUAL "OCC_INCLUDE_DIR-NOTFOUND")
++  file(STRINGS ${OCC_INCLUDE_DIR}/Standard_Version.hxx OCC_MAJOR
++    REGEX "#define OCC_VERSION_MAJOR.*"
++  )
++  string(REGEX MATCH "[0-9]+" OCC_MAJOR ${OCC_MAJOR})
++  file(STRINGS ${OCC_INCLUDE_DIR}/Standard_Version.hxx OCC_MINOR
++    REGEX "#define OCC_VERSION_MINOR.*"
++  )
++  string(REGEX MATCH "[0-9]+" OCC_MINOR ${OCC_MINOR})
++  file(STRINGS ${OCC_INCLUDE_DIR}/Standard_Version.hxx OCC_MAINT
++    REGEX "#define OCC_VERSION_MAINTENANCE.*"
++  )
++  string(REGEX MATCH "[0-9]+" OCC_MAINT ${OCC_MAINT})
++
++  set(OCC_VERSION_STRING "${OCC_MAJOR}.${OCC_MINOR}.${OCC_MAINT}")
++else(OCC_INCLUDE_DIR AND NOT ${OCC_INCLUDE_DIR} STREQUAL "OCC_INCLUDE_DIR-NOTFOUND")
++  message( "" )
++  message( "*** OpenCascade header files missing ***" )
++  message( "Verify your OpenCascade installation or pass CMake" )
++  message( "  the header directory as '-DOCC_INCLUDE_DIR=<path>'" )
++  message( "" )
++  message( FATAL_ERROR "" )
++endif(OCC_INCLUDE_DIR AND NOT ${OCC_INCLUDE_DIR} STREQUAL "OCC_INCLUDE_DIR-NOTFOUND")
++
++# handle the QUIETLY and REQUIRED arguments and set OCC_FOUND to TRUE if
++# all listed variables are TRUE
++include(FindPackageHandleStandardArgs)
++FIND_PACKAGE_HANDLE_STANDARD_ARGS(OCC REQUIRED_VARS OCC_INCLUDE_DIR VERSION_VAR OCC_VERSION_STRING)
++
++if(OCC_FOUND)
++  foreach(lib IN LISTS OCC_LIBS)
++
++#Use the specified library location if given
++    find_library(OCC_TEMP_LIB ${lib} PATHS ${OCC_LIBRARY_DIR} NO_DEFAULT_PATH)
++    if(${OCC_TEMP_LIB} STREQUAL "OCC_TEMP_LIB-NOTFOUND")
++      message( "" )
++      message( "*** OpenCascade library missing ***" )
++      message( "Could not find a library for ${lib}" )
++      message( "Verify your OpenCascade installation or pass CMake" )
++      message( "  the library directory as '-DOCC_LIBRARY_DIR=<path>'" )
++      message( "" )
++      message( FATAL_ERROR "" )
++    else(${OCC_TEMP_LIB} STREQUAL "OCC_TEMP_LIB-NOTFOUND")
++      list(APPEND OCC_LIBRARIES ${OCC_TEMP_LIB})
++    endif(${OCC_TEMP_LIB} STREQUAL "OCC_TEMP_LIB-NOTFOUND")
++
++    unset(OCC_TEMP_LIB CACHE)
++  endforeach(lib)
++
++  #Convert path names to absolute for cleaner display
++  get_filename_component(OCC_INCLUDE_DIR "${OCC_INCLUDE_DIR}" ABSOLUTE)
++  get_filename_component(OCC_LIBRARY_DIR "${OCC_LIBRARY_DIR}" ABSOLUTE)
++  message(STATUS "Found ${OCC_TYPE} version: ${OCC_VERSION_STRING}")
++  message(STATUS " ++ ${OCC_TYPE} include directory: ${OCC_INCLUDE_DIR}")
++  message(STATUS " ++ ${OCC_TYPE} shared libraries directory: ${OCC_LIBRARY_DIR}")
++endif(OCC_FOUND)
+diff --git a/common/dialog_about/dialog_about.cpp b/common/dialog_about/dialog_about.cpp
+index 3ab6e8875..00f4b9e55 100644
+--- a/common/dialog_about/dialog_about.cpp
++++ b/common/dialog_about/dialog_about.cpp
+@@ -35,6 +35,9 @@
+ extern std::string GetKicadCurlVersion();
+ extern std::string GetCurlLibVersion();
+ #endif
++#if defined( KICAD_USE_OCC ) | defined( KICAD_USE_OCE )
++#include <Standard_Version.hxx>
++#endif
+ 
+ #include <boost/version.hpp>
+ #include <wx/clipbrd.h>
+@@ -473,6 +476,14 @@ void DIALOG_ABOUT::buildVersionInfoData( wxString& aMsg, bool aFormatHtml )
+                       << ( BOOST_VERSION / 100 % 1000 ) << wxT( "." )
+                       << ( BOOST_VERSION % 100 ) << eol;
+ 
++#ifdef KICAD_USE_OCC
++    aMsg << indent4 << "OpenCASCADE Technology: " << OCC_VERSION_COMPLETE << eol;
++#endif
++
++#ifdef KICAD_USE_OCE
++    aMsg << indent4 << "OpenCASCADE Community Edition: " << OCC_VERSION_COMPLETE << eol;
++#endif
++
+ #ifdef BUILD_GITHUB_PLUGIN
+     aMsg << indent4 << "Curl: " << GetCurlLibVersion() << eol;
+ #endif
+@@ -557,6 +568,13 @@ void DIALOG_ABOUT::buildVersionInfoData( wxString& aMsg, bool aFormatHtml )
+     aMsg << OFF;
+ #endif
+ 
++    aMsg << indent4 << "KICAD_USE_OCC=";
++#ifdef KICAD_USE_OCC
++    aMsg << ON;
++#else
++    aMsg << OFF;
++#endif
++
+     aMsg << indent4 << "KICAD_SPICE=";
+ #ifdef KICAD_SPICE
+     aMsg << ON;
+diff --git a/plugins/3d/oce/CMakeLists.txt b/plugins/3d/oce/CMakeLists.txt
+index 6c6163118..1c6df742d 100644
+--- a/plugins/3d/oce/CMakeLists.txt
++++ b/plugins/3d/oce/CMakeLists.txt
+@@ -13,7 +13,7 @@
+ #
+ 
+ include_directories( SYSTEM
+-    ${OCE_INCLUDE_DIRS}
++    ${OCC_INCLUDE_DIR}
+ )
+ 
+ add_library( s3d_plugin_oce MODULE
+@@ -21,7 +21,7 @@ add_library( s3d_plugin_oce MODULE
+         loadmodel.cpp
+         )
+ 
+-target_link_libraries( s3d_plugin_oce kicad_3dsg ${LIBS_OCE} ${wxWidgets_LIBRARIES} )
++target_link_libraries( s3d_plugin_oce kicad_3dsg ${OCC_LIBRARIES} ${wxWidgets_LIBRARIES} )
+ 
+ if( APPLE )
+     # puts library into the main kicad.app bundle in build tree
+diff --git a/plugins/3d/oce/loadmodel.cpp b/plugins/3d/oce/loadmodel.cpp
+index 9d581f363..5ae69dc74 100644
+--- a/plugins/3d/oce/loadmodel.cpp
++++ b/plugins/3d/oce/loadmodel.cpp
+@@ -40,7 +40,6 @@
+ #include <TopoDS_Shape.hxx>
+ #include <Quantity_Color.hxx>
+ #include <XCAFApp_Application.hxx>
+-#include <Handle_XCAFApp_Application.hxx>
+ 
+ #include <AIS_Shape.hxx>
+ 
+@@ -53,7 +52,6 @@
+ 
+ #include <XCAFDoc_DocumentTool.hxx>
+ #include <XCAFDoc_ColorTool.hxx>
+-#include <Handle_XCAFDoc_ColorTool.hxx>
+ #include <XCAFDoc_ShapeTool.hxx>
+ 
+ #include <BRep_Tool.hxx>
+diff --git a/utils/kicad2step/CMakeLists.txt b/utils/kicad2step/CMakeLists.txt
+index a60153f42..53186213a 100644
+--- a/utils/kicad2step/CMakeLists.txt
++++ b/utils/kicad2step/CMakeLists.txt
+@@ -5,7 +5,7 @@ include_directories( BEFORE
+ )
+ 
+ include_directories( SYSTEM 
+-    ${OCE_INCLUDE_DIRS}
++    ${OCC_INCLUDE_DIR}
+ )
+ 
+ set( K2S_FILES
+@@ -28,7 +28,7 @@ endif( MINGW )
+ 
+ add_executable( kicad2step ${K2S_FILES} )
+ 
+-target_link_libraries( kicad2step ${wxWidgets_LIBRARIES} ${LIBS_OCE} )
++target_link_libraries( kicad2step ${wxWidgets_LIBRARIES} ${OCC_LIBRARIES} )
+ 
+ if( APPLE )
+     # puts binaries into the *.app bundle while linking
+diff --git a/utils/kicad2step/pcb/oce_utils.cpp b/utils/kicad2step/pcb/oce_utils.cpp
+index dccd5c681..334a5736d 100644
+--- a/utils/kicad2step/pcb/oce_utils.cpp
++++ b/utils/kicad2step/pcb/oce_utils.cpp
+@@ -43,6 +43,7 @@
+ #include <STEPCAFControl_Reader.hxx>
+ #include <STEPCAFControl_Writer.hxx>
+ #include <APIHeaderSection_MakeHeader.hxx>
++#include <Standard_Version.hxx>
+ #include <TCollection_ExtendedString.hxx>
+ #include <TDataStd_Name.hxx>
+ #include <TDF_LabelSequence.hxx>
+@@ -779,6 +780,9 @@ bool PCBMODEL::CreatePCB()
+         topex.Next();
+     }
+ 
++#if ( defined OCC_VERSION_HEX ) && ( OCC_VERSION_HEX > 0x070101 )
++    m_assy->UpdateAssemblies();
++#endif
+     return true;
+ }
+ 
+-- 
+2.11.0
+
