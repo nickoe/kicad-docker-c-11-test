@@ -1,9 +1,9 @@
 # Use Ubuntu Bionic image as base
-FROM ubuntu:18.04
+FROM ubuntu:16.04
 
 # Install deps
 RUN apt-get update -q && \
-    apt-get install --no-install-recommends --no-upgrade -qy cmake build-essential g++ libwxgtk3.0-gtk3-dev libglew-dev libglm-dev libcurl4 libcurl4-gnutls-dev libcairo2-dev libboost-dev libboost-test-dev git autoconf libtool automake flex bison liboce-foundation-dev liboce-ocaf-dev swig python python-dev ca-certificates python-wxgtk3.0 python-wxgtk3.0-dev doxygen graphviz libssl-dev ccache curl && \
+    apt-get install --no-install-recommends --no-upgrade -qqy cmake build-essential g++ libwxgtk3.0-dev libglew-dev libglm-dev libcurl3 libcurl4-gnutls-dev libcairo2-dev libboost-dev libboost-test-dev git autoconf libtool automake  flex bison liboce-foundation-dev liboce-ocaf-dev swig python python-dev ca-certificates python-wxgtk3.0 python-wxgtk3.0-dev doxygen graphviz libssl-dev ccache curl && \
     apt-get clean && \
     apt-get purge && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
