@@ -14,7 +14,7 @@ RUN git clone git://git.code.sf.net/p/ngspice/ngspice && \
     git checkout 99a20162d5038a328d335d11da69c9eee0549fdc && \
     ./autogen.sh && \
     ./configure --with-ngshared --enable-xspice --enable-cider --enable-openmp && \
-    make && \
+    make -j$(nproc) && \
     make install && \
     cd ..  && \
     rm -rf ngspice /tmp/* /var/tmp/*
