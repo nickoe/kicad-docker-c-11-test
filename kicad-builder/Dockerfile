@@ -11,7 +11,7 @@ RUN apt-get update -q && \
 # Compile and install libngspice
 RUN git clone git://git.code.sf.net/p/ngspice/ngspice && \
     cd ngspice && \
-    git checkout 99a20162d5038a328d335d11da69c9eee0549fdc && \
+    git checkout ngspice-30-2 && \
     ./autogen.sh && \
     ./configure --with-ngshared --enable-xspice --enable-cider --enable-openmp && \
     make -j$(nproc) && \
