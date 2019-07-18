@@ -32,13 +32,13 @@ COPY ./0001-Enable-C-11.patch .
 # Prepare workspace
 RUN echo foo
 RUN git clone https://github.com/KiCad/kicad-source-mirror --depth=500
-#RUN cd kicad-source-mirror && git checkout da9ca2def28317e15a129b5a3fb060a6264f5b5e
+RUN cd kicad-source-mirror && git checkout da9ca2def28317e15a129b5a3fb060a6264f5b5e^
 #RUN cd kicad-source-mirror && patch -p1 -i ../0001-Enable-C-11.patch
 
 # Do stuff
 #CMD mkdir -p build && cd build && cmake .. && make
 RUN mkdir -p kicad-source-mirror/build
-RUN cd kicad-source-mirror/build && cmake -DKICAD_SCRIPTING=ON -DKICAD_SCRIPTING_MODULES=ON -DKICAD_SCRIPTING_WXPYTHON=ON .. && make -j4
+RUN cd kicad-source-mirror/build && cmake -DKICAD_SCRIPTING=ON -DKICAD_SCRIPTING_MODULES=ON -DKICAD_SCRIPTING_WXPYTHON=ON -DKICAD_SPICE=OFF -DKICAD_USE_OCE=OFF .. && make -j4
 
 # Standard SSH port
 #EXPOSE 22

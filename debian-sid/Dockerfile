@@ -1,41 +1,42 @@
-FROM debian:sid
+FROM debian:sid as build-env
 MAINTAINER Nick Østergaard <oe.nick at gmail dot com>
 
 # Install the kicad dependencies
 RUN apt-get update
-RUN apt-get -y install git bzr make cmake 
+RUN apt-get -y install git bzr make cmake
 RUN apt-get -y install build-essential
 RUN apt-get -y install libglew-dev wxgtk3.0-dev x3.0-headers libglm-dev libcurl4-openssl-dev python2.7 pkg-config libboost-all-dev swig libcairo2-dev doxygen openssl libssl-dev
-
+RUN apt-get -y install ngspice ngspice-dev libngspice0 libngspice0-dev
 # Install JDK 7 for jenkins
 RUN apt-get install -y openjdk-8-jdk
+RUN apt-get install -y curl wget
 
-# Install a basic SSH server
-RUN apt-get install -y openssh-server
-RUN sed -i 's|session    required     pam_loginuid.so|session    optional     pam_loginuid.so|g' /etc/pam.d/sshd
-RUN mkdir -p /var/run/sshd
 
-# Prepare a jenkins user and use it
-#RUN useradd -ms /bin/bash jenkins
+RUN mkdir -p /opt/app-root/jenkins /home/jenkins && \
+    chown -R 1001:0 /opt/app-root/jenkins /home/jenkins && \
+    chmod -R g+w /opt/app-root/jenkins /home/jenkins && \
+    chmod 664 /etc/passwd && \
+    chmod -R 775 /usr/lib/jvm && \
+    chmod 775 /usr/bin
 
-# Set user jenkins to the image
-RUN useradd -m -d /home/jenkins -s /bin/sh jenkins &&\
-    echo "jenkins:jenkins" | chpasswd
+
+# Copy upstream run-jnlp-client script and helpers
+ADD https://raw.githubusercontent.com/openshift/jenkins/master/slave-base/contrib/bin/generate_container_user /usr/local/bin/
+#ADD https://raw.githubusercontent.com/openshift/jenkins/master/slave-base/contrib/bin/run-jnlp-client /usr/local/bin/
+COPY run-jnlp-client /usr/local/bin/
+ADD https://raw.githubusercontent.com/openshift/jenkins/master/slave-base/contrib/bin/configure-slave /usr/local/bin/
+ADD https://raw.githubusercontent.com/openshift/jenkins/master/slave-base/contrib/bin/configure-agent /usr/local/bin/
+#ADD openshift-jenkins-upstream/slave-base/contrib/bin/* /usr/local/bin/
+
+# Copy our own entrypoint script with support for GitLab CI
+#COPY contrib/bin/* /usr/local/bin/
+ADD https://gitlab.cern.ch/ci-tools/ci-worker/raw/master/ci-base/contrib/bin/run-ci-worker /usr/local/bin/
+RUN chmod +rwx /usr/local/bin/*
+RUN apt-get install -y desktop-file-utils
+RUN apt-get install -y fuse
+RUN modprobe fuse
 #USER jenkins
+#USER 1001
 WORKDIR /home/jenkins
-
-# Add a patch file
-COPY ./0001-Enable-C-11.patch .
-
-# Prepare workspace
-#RUN echo foo
-RUN git clone https://github.com/KiCad/kicad-source-mirror --depth=1
-RUN cd kicad-source-mirror
-#CMD mkdir -p build && cd build && cmake .. && make
-RUN mkdir -p kicad-source-mirror/build
-RUN cd kicad-source-mirror/build && cmake -DKICAD_SCRIPTING=ON -DKICAD_SCRIPTING_MODULES=ON -DKICAD_SCRIPTING_WXPYTHON=ON .. && VERBOSE=1 make -j4
-
-# Standard SSH port
-#EXPOSE 22
-#CMD ["/usr/sbin/sshd", "-D"] 
+ENTRYPOINT ["/usr/local/bin/run-ci-worker"]
 
